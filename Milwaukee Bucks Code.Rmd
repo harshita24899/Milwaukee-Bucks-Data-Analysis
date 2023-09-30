@@ -1,0 +1,195 @@
+---
+title: "Milwaukee Bucks Analysis"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Question 1
+# Situation
+
+- 4th quarter
+- Less than 24 seconds remaining in the game
+- Shot clock is off
+- Milwaukee Bucks are leading by 3 points
+- Milwaukee Bucks are on defense
+  
+# Coaches asks whether we should foul?
+-   make recommendation to the coach on a prescribed course of action
+-   1-2 pages
+-   understood by both technical and non technical
+-   indicate what other data points (not provided) that would help improve your responses
+  
+
+
+```{r,warning=FALSE}
+
+library(dplyr)
+library(ggplot2)
+
+
+```
+
+```{r,warning=FALSE}
+
+# Load the data
+data <- read.csv("chances.csv")
+
+# Data Quality check
+
+## Check for missing values in a data frame
+
+data[data == "null"] <- NA
+sum(is.na(data))
+
+## Explore the data structure
+str(data)
+
+## Correct the datatypes
+data<-data%>%
+  mutate(
+    gid_nba = as.character(gid_nba),
+    game_date = as.Date(game_date, format = "%m/%d/%Y"),
+    shot_fga = as.integer(shot_fga),
+    shot_fg = as.integer(shot_fg),
+    shot_fga3 = as.integer(shot_fga3),
+    shot_fg3 = as.integer(shot_fg3),
+    shot_qSP = as.double(shot_qSP),
+    fouls_def = as.integer(fouls_def),
+    fouls_def_shooting = as.integer(fouls_def_shooting),
+    fta = as.integer(fta),
+    fta_shooting = as.integer(fta_shooting)
+  )
+
+
+## Check for duplicate rows in a data frame
+any(duplicated(data))
+
+
+```
+
+
+```{r} 
+
+# subset the data for the situation from question 1
+
+filtered_data <- data %>%
+  filter( # 4th quarter 
+          period == 4,                       
+          # Milwaukee bucks team on defense
+          team_nba_def == "MIL",             
+          # startType of chance is advantageous to defense team
+          startType %in% c("FGDRB", "TO", "FTDRB", "SLOB", "BLOB"))  
+        
+head(filtered_data)
+
+# Calculate the success rate when fouling (mean of shot_qSP)
+filtered_data$shot_qSP[is.na(filtered_data$shot_qSP)] <- 0
+success_rate_foul <- round(mean(as.numeric(filtered_data$shot_qSP)),2)
+
+# Calculate the success rate when not fouling
+success_rate_no_foul <- 100-success_rate_foul
+
+
+# Create a data frame for the success rates
+success_rates <- data.frame(
+  Category = c("No Foul", "Foul"),
+  Rate = c(success_rate_no_foul, success_rate_foul)
+)
+
+# Create a pie chart
+ggplot(success_rates, aes(x = "", y = Rate, fill = Category)) +
+  geom_bar(stat = "identity", width = 1) +
+  geom_col(color = "black")+
+  coord_polar(theta = "y") +
+  labs(title = "Graph1: Success Rates of Fouling", fill = NULL) +  
+  theme_void() +
+  scale_fill_manual(values = c("No Foul" = "#00471B", "Foul" = "#EEE1C6")) +
+  theme(legend.position = "right",  
+        legend.text = element_text(size = 12), 
+        plot.title = element_text(size = 16, hjust = 0.5),  
+        
+        plot.margin = unit(rep(1, 4), "cm")) +
+  
+  geom_text(aes(label = paste0(Rate, "%")), position = position_stack(vjust = 0.5), size = 5)
+
+
+# Make a recommendation based on success rates
+if (success_rate_foul > success_rate_no_foul) {
+  recommendation <- "Based on historical data, fouling is recommended."
+} else {
+  recommendation <- "Based on historical data, not fouling is recommended."
+}
+
+# Recommendation
+cat("Success Rate with Fouling:", success_rate_foul, "and Success Rate without Fouling:", success_rate_no_foul, "%\n","-> Hence:",recommendation, "\n")
+```
+
+
+```{r}
+
+# find frequency of (startTyoe,outcome) pairs for our team
+
+new_filtered_data <- data %>%
+  filter( # 4th quarter 
+          period == 4,                       
+          # Milwaukee bucks team on defense
+          team_nba_def == "MIL" | team_nba_off=="MIL",             
+          # startType of chance is advantageous to defense team
+          startType %in% c("FGDRB", "TO", "FTDRB", "SLOB", "BLOB")) 
+
+# Create a table of (startType, outcome) pairs
+pair_frequency <- table(new_filtered_data$startType, new_filtered_data$outcome)
+
+# Convert the table to a data frame for better readability
+pair_frequency_df <- as.data.frame(pair_frequency)
+
+# Rename the columns for clarity
+colnames(pair_frequency_df) <- c("startType", "outcome", "frequency")
+
+# Print the pair frequency data frame
+print(pair_frequency_df)
+
+# bar chart for best kind of start type
+
+# Filter out pairs with a frequency of 0
+pair_frequency_filtered <- pair_frequency_df[pair_frequency_df$frequency > 0, ]
+
+# Create a bar chart
+barplot(
+  height = pair_frequency_filtered$frequency,
+  names.arg = paste(pair_frequency_filtered$startType,' X ', pair_frequency_filtered$outcome),
+  main = "Graph3:Frequency of (startType, outcome) Pairs",
+  ylab = "Frequency",
+  col = "#00471B",            
+  border = "black",           
+  xlim = c(0.5, nrow(pair_frequency_filtered) + 0.5),  
+  ylim = c(0, max(pair_frequency_filtered$frequency) + 5),
+  las = 2,                    
+  space = 0.2,                
+  cex.names = 0.5             
+)
+
+```
+```{r}
+
+# Convert the table to a matrix
+pair_frequency_matrix <- as.matrix(pair_frequency)
+
+# Create a heatmap
+ggplot(pair_frequency_df, aes(x = outcome, y = startType, fill = frequency)) +
+  geom_tile() +                                          
+  geom_text(aes(label = frequency), vjust = 1) +         
+  scale_fill_gradient(low = "white", high = "#00471B") +  
+  labs(title = "Graph2: Heatmap of (startType, outcome) Pair Frequencies",
+       x = "Outcome", y = "Start Type") +                
+  theme_minimal()+                                       
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
